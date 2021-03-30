@@ -1,0 +1,5 @@
+docker build . -t ocspd
+docker run --rm -t ocspd
+docker run --entrypoint=sh -it ocspd
+docker run --entrypoint=/app -it ocspd --help
+
