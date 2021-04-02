@@ -3,3 +3,5 @@ docker run --rm -t ocspd
 docker run --entrypoint=sh -it ocspd
 docker run --entrypoint=/app -it ocspd --help
 
+docker run -e OCSP_PORT=666 --entrypoint=/app -it utility/ocspd:debug --verbose
+

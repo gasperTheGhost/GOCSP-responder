@@ -68,6 +68,11 @@ func Responder() *OCSPResponder {
 // Creates an OCSP http handler and returns it
 func (self *OCSPResponder) makeHandler() func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
+
+		// Generate an access log
+		log.Println(r.Host, r.RemoteAddr, r.Header["X-Forwarded-For"], r.Method, r.URL.Path,
+			r.Header["Content-Length"], r.Header["User-Agent"])
+
 		log.Print(fmt.Sprintf("Got %s request from %s", r.Method, r.RemoteAddr))
 		if self.Strict && r.Header.Get("Content-Type") != "application/ocsp-request" {
 			log.Println("Strict mode requires correct Content-Type header")
@@ -365,6 +370,9 @@ func (self *OCSPResponder) Serve() error {
 	self.CaCert = cacert
 	self.RespCert = respcert
 
+	// Add handler for "/health"
+	http.HandleFunc("/health", healthHandler)
+
 	// get handler and serve
 	handler := self.makeHandler()
 	http.HandleFunc("/", handler)
@@ -377,4 +385,18 @@ func (self *OCSPResponder) Serve() error {
 		http.ListenAndServe(listenOn, nil)
 	}
 	return nil
+}
+
+func healthHandler(w http.ResponseWriter, r *http.Request) {
+	// Generate an access log
+	log.Println(r.Host, r.RemoteAddr, r.Header["X-Forwarded-For"], r.Method, r.URL.Path,
+		r.Header["Content-Length"], r.Header["User-Agent"])
+
+	// Switch based on method
+	switch r.Method {
+	case "GET":
+		w.WriteHeader(http.StatusOK)
+	default:
+		w.WriteHeader(http.StatusBadRequest)
+	}
 }
