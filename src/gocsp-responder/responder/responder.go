@@ -123,10 +123,10 @@ const (
 
 type IndexEntry struct {
 	Status byte
-	Serial *big.Int // wow I totally called it
-	// revocation reason may need to be added
-	IssueTime         time.Time
+	Serial *big.Int
+	ExpirationTime    time.Time
 	RevocationTime    time.Time
+	RevocationReason  string
 	DistinguishedName string
 }
 
@@ -155,21 +155,27 @@ func (self *OCSPResponder) parseIndex() error {
 		s := bufio.NewScanner(file)
 		for s.Scan() {
 			var ie IndexEntry
-			ln := strings.Fields(s.Text())
+			ln := strings.Split(s.Text(), "\t")
 			ie.Status = []byte(ln[0])[0]
-			ie.IssueTime, _ = time.Parse(t, ln[1])
+			ie.ExpirationTime, _ = time.Parse(t, ln[1])
+			ie.Serial, _ = new(big.Int).SetString(ln[3], 16)
+			ie.DistinguishedName = ln[5]
+
 			if ie.Status == StatusValid {
-				ie.Serial, _ = new(big.Int).SetString(ln[2], 16)
-				ie.DistinguishedName = ln[4]
 				ie.RevocationTime = time.Time{} //doesn't matter
+				ie.RevocationReason = ""
+			} else if ie.Status == StatusExpired {
+				ie.RevocationTime = time.Time{} //doesn't matter
+				ie.RevocationReason = ""
 			} else if ie.Status == StatusRevoked {
-				ie.Serial, _ = new(big.Int).SetString(ln[3], 16)
-				ie.DistinguishedName = ln[5]
-				ie.RevocationTime, _ = time.Parse(t, ln[2])
+				rr := strings.Split(ln[2], ",")
+				ie.RevocationTime, _ = time.Parse(t, rr[0])
+				ie.RevocationReason = rr[1]
 			} else {
 				// invalid status or bad line. just carry on
 				continue
 			}
+			log.Println(ie)
 			self.IndexEntries = append(self.IndexEntries, ie)
 		}
 	} else {
@@ -258,9 +264,11 @@ func (self *OCSPResponder) verifyIssuer(req *ocsp.Request) error {
 func (self *OCSPResponder) verify(rawreq []byte) ([]byte, error) {
 	var status int
 	var revokedAt time.Time
+	var revokedReason int
 
 	// parse the request
 	req, exts, err := ocsp.ParseRequest(rawreq)
+	//req, err := ocsp.ParseRequest(rawreq)
 	if err != nil {
 		log.Println(err)
 		return nil, err
@@ -283,6 +291,34 @@ func (self *OCSPResponder) verify(rawreq []byte) ([]byte, error) {
 			log.Print("This certificate is revoked")
 			status = ocsp.Revoked
 			revokedAt = ent.RevocationTime
+			// Switch based on RevocationReason
+			switch strings.ToUpper(ent.RevocationReason) {
+			case "UNSPECIFIED":
+				revokedReason = ocsp.Unspecified
+			case "KEYCOMPROMISE":
+				revokedReason = ocsp.KeyCompromise
+			case "CACOMPROMISE":
+				revokedReason = ocsp.CACompromise
+			case "AFFILIATIONCHANGED":
+				revokedReason = ocsp.AffiliationChanged
+			case "SUPERSEDED":
+				revokedReason = ocsp.Superseded
+			case "CESSATIONOFOPERATION":
+				revokedReason = ocsp.CessationOfOperation
+			case "CERTIFICATEHOLD":
+				revokedReason = ocsp.CertificateHold
+			case "REMOVEFROMCRL":
+				revokedReason = ocsp.RemoveFromCRL
+			case "PRIVILEGEWITHDRAWN":
+				revokedReason = ocsp.PrivilegeWithdrawn
+			case "AACOMPROMISE":
+				revokedReason = ocsp.AACompromise
+			default:
+				revokedReason = ocsp.Unspecified
+			}
+		} else if ent.Status == StatusExpired {
+			log.Print("This certificate is expired")
+			status = ocsp.Good
 		} else if ent.Status == StatusValid {
 			log.Print("This certificate is valid")
 			status = ocsp.Good
@@ -320,12 +356,15 @@ func (self *OCSPResponder) verify(rawreq []byte) ([]byte, error) {
 		responseExtensions = append(responseExtensions, *nonce)
 	}
 
+	fmt.Println(revokedAt)
+
+
 	// construct response template
 	rtemplate := ocsp.Response{
 		Status:           status,
 		SerialNumber:     req.SerialNumber,
 		Certificate:      self.RespCert,
-		RevocationReason: ocsp.Unspecified,
+		RevocationReason: revokedReason,
 		IssuerHash:       req.HashAlgorithm,
 		RevokedAt:        revokedAt,
 		ThisUpdate:       time.Now().AddDate(0, 0, -1).UTC(),
@@ -389,8 +428,8 @@ func (self *OCSPResponder) Serve() error {
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
 	// Generate an access log
-	log.Println(r.Host, r.RemoteAddr, r.Header["X-Forwarded-For"], r.Method, r.URL.Path,
-		r.Header["Content-Length"], r.Header["User-Agent"])
+//	log.Println(r.Host, r.RemoteAddr, r.Header["X-Forwarded-For"], r.Method, r.URL.Path,
+//		r.Header["Content-Length"], r.Header["User-Agent"])
 
 	// Switch based on method
 	switch r.Method {

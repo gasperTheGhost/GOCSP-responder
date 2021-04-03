@@ -1,7 +1,7 @@
 ifneq ($(SEMVER),)
 	_TAG :=$(SEMVER)
 else
-	_TAG :=1.0.2
+	_TAG :=1.0.3
 endif
 
 _APP_NAME := ocspd
