@@ -73,7 +73,6 @@ func (self *OCSPResponder) makeHandler() func(w http.ResponseWriter, r *http.Req
 		log.Println(r.Host, r.RemoteAddr, r.Header["X-Forwarded-For"], r.Method, r.URL.Path,
 			r.Header["Content-Length"], r.Header["User-Agent"])
 
-		log.Print(fmt.Sprintf("Got %s request from %s", r.Method, r.RemoteAddr))
 		if self.Strict && r.Header.Get("Content-Type") != "application/ocsp-request" {
 			log.Println("Strict mode requires correct Content-Type header")
 			w.WriteHeader(http.StatusBadRequest)
@@ -109,7 +108,7 @@ func (self *OCSPResponder) makeHandler() func(w http.ResponseWriter, r *http.Req
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		log.Print("Writing response")
+		//log.Print("Writing response")
 		w.Write(resp)
 	}
 }
@@ -175,7 +174,6 @@ func (self *OCSPResponder) parseIndex() error {
 				// invalid status or bad line. just carry on
 				continue
 			}
-			log.Println(ie)
 			self.IndexEntries = append(self.IndexEntries, ie)
 		}
 	} else {
@@ -232,7 +230,7 @@ func checkForNonceExtension(exts []pkix.Extension) *pkix.Extension {
 	nonce_oid := asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 48, 1, 2}
 	for _, ext := range exts {
 		if ext.Id.Equal(nonce_oid) {
-			log.Println("Detected nonce extension")
+			//log.Println("Detected nonce extension")
 			return &ext
 		}
 	}
@@ -355,9 +353,6 @@ func (self *OCSPResponder) verify(rawreq []byte) ([]byte, error) {
 		self.NonceList = append(self.NonceList, nonce.Value)
 		responseExtensions = append(responseExtensions, *nonce)
 	}
-
-	fmt.Println(revokedAt)
-
 
 	// construct response template
 	rtemplate := ocsp.Response{
