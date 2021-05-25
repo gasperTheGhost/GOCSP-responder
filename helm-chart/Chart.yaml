@@ -1,0 +1,9 @@
+apiVersion: v2
+name: ocspd
+description: OCSP responder
+type: application
+version: 1.0.1
+appVersion: "1.0.1"
+sources:
+- https://git-codecommit.us-west-2.amazonaws.com/v1/repos/helm
+- https://github.com/WestPowerData/GOCSP-responder.git

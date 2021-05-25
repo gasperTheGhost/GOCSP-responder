@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "ocspd.fullname" . }}-test-connection"
+  labels:
+    {{- include "ocspd.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+spec:
+  containers:
+    - name: wget
+      image: busybox
+      command: ['wget']
+      args: ['{{ include "ocspd.fullname" . }}:{{ .Values.service.port }}{{ .Values.service.healthcheckPath }}']
+  restartPolicy: Never
