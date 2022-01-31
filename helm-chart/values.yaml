@@ -5,7 +5,7 @@
 replicaCount: 1
 
 image:
-  repository: 913152793797.dkr.ecr.us-west-2.amazonaws.com/utility/ocspd
+  repository: 678565182846.dkr.ecr.us-west-2.amazonaws.com/utility/ocspd
   pullPolicy: Always
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
