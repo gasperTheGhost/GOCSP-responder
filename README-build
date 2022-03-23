@@ -5,3 +5,5 @@ docker run --entrypoint=/app -it ocspd --help
 
 docker run -e OCSP_PORT=666 --entrypoint=/app -it utility/ocspd:debug --verbose
 
+NOTE: the code does not use golang modules and therefore one must:
+export  GO111MODULE=off
