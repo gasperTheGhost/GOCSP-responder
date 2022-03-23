@@ -1,0 +1,12 @@
+bin/
+kubeconfig/
+docker-build
+helm-package
+update-helm-repo
+pull-kubeconfig
+pull-values-file
+semver
+checkecr
+checkhelm
+checkdeploy
+

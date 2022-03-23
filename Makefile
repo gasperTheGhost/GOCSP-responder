@@ -1,7 +1,7 @@
 
 _APP_NAME := ocspd
-_REG_ID := 913152793797
-_REG_URL := 913152793797.dkr.ecr.us-west-2.amazonaws.com
+_REG_ID := 678565182846
+_REG_URL := 678565182846.dkr.ecr.us-west-2.amazonaws.com
 _REG_PREFIX := utility
 _ECR_REGION := us-west-2
 _NEXUS_HELM_URL := https://nexus.black.powerdata.west.com/repository/helm/
@@ -60,7 +60,7 @@ clean:
 	rm -f docker-build helm-package
 	rm -f update-helm-repo pull-kubeconfig pull-values-file
 	rm -f semver checkecr checkhelm checkdeploy
-	rm -rf kubconfig
+	rm -rf kubconfig bin
 
 
 semver:
@@ -80,7 +80,7 @@ endif
 ##########
 
 local-build:  ## To get a local copy of the executable
-	export GOPATH=$$PWD; go install gocsp-responder/main  
+	export GOPATH=$$PWD; export GO111MODULE=off; go install gocsp-responder/main
 
 docker-debug:  ## Build the container
 	docker build '--network=host' -t ${_REG_PREFIX}/${_APP_NAME}:debug -f Dockerfile.debug .
