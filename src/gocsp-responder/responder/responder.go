@@ -11,11 +11,13 @@ import (
 	"crypto"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"database/sql"
 	"encoding/asn1"
 	"encoding/base64"
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"github.com/go-sql-driver/mysql"
 	"gocsp-responder/crypto/ocsp"
 	"io/ioutil"
 	"log"
@@ -25,6 +27,8 @@ import (
 	"strings"
 	"time"
 )
+
+var db *sql.DB
 
 type OCSPResponder struct {
 	IndexFile    string
@@ -42,6 +46,8 @@ type OCSPResponder struct {
 	CaCert       *x509.Certificate
 	RespCert     *x509.Certificate
 	NonceList    [][]byte
+	Database	 bool
+	MySQLcfg	 *mysql.Config
 }
 
 // I decided on these defaults based on what I was using
@@ -55,14 +61,67 @@ func Responder() *OCSPResponder {
 		LogToStdout:  false,
 		Strict:       false,
 		Port:         8888,
-		Address:      "",
+		Address:      "0.0.0.0",
 		Ssl:          false,
 		IndexEntries: nil,
 		IndexModTime: time.Time{},
 		CaCert:       nil,
 		RespCert:     nil,
 		NonceList:    nil,
+		Database:	  false,
+		MySQLcfg:	  mysql.NewConfig(),
 	}
+}
+
+// Initialize `ocsp_index` table
+func DbInitialize() error {
+	query := `CREATE TABLE IF NOT EXISTS ocsp_index(
+				serial BIGINT PRIMARY KEY,
+				distinguished_name TEXT,
+				valid_from DATETIME DEFAULT CURRENT_TIMESTAMP,
+				valid_until DATETIME,
+				revoked_status TINYINT DEFAULT 0,
+				revoked_on DATETIME NULL,
+				revocation_reason enum(
+					'UNSPECIFIED',
+					'KEYCOMPROMISE',
+					'CACOMPROMISE',
+					'AFFILIATIONCHANGED',
+					'SUPERSEDED',
+					'CESSATIONOFOPERATION',
+					'CERTIFICATEHOLD',
+					'REMOVEFROMCRL',
+					'PRIVILEGEWITHDRAWN',
+					'AACOMPROMISE'
+				) NULL
+			  );`
+	_, err := db.Query(query)
+	return err
+}
+
+// function to conncet to the database
+func (self *OCSPResponder) DbConnect() error {
+	// Get a database handle.
+    var err error
+    db, err = sql.Open("mysql", self.MySQLcfg.FormatDSN())
+    if err != nil {
+		return err
+    }
+
+    pingErr := db.Ping()
+    if pingErr != nil {
+		return pingErr
+    }
+    fmt.Println("Connected!")
+
+	// Initialize database if OCSP table does not exist
+	_, table_check := db.Query("select * from ocsp_index;")
+	if table_check != nil {
+		err := DbInitialize()
+		return err
+	}
+
+	return nil
 }
 
 // Creates an OCSP http handler and returns it
@@ -127,6 +186,31 @@ type IndexEntry struct {
 	RevocationTime    time.Time
 	RevocationReason  string
 	DistinguishedName string
+}
+
+func GetCertStatusFromDB(serial *big.Int) (IndexEntry, error) {
+	var revokedStatus bool
+	indexEntry := IndexEntry{}
+	indexEntry.Serial = serial
+
+	row := db.QueryRow("SELECT `distinguished_name`, `valid_until`, `revoked_status`, `revoked_on`, `revocation_reason` FROM `ocsp_index` WHERE serial = ?;", serial.String())
+	err := row.Scan(&indexEntry.DistinguishedName, &indexEntry.ExpirationTime, &revokedStatus, &indexEntry.RevocationTime, &indexEntry.RevocationReason)
+	if err != nil {
+        if err == sql.ErrNoRows {
+            return indexEntry, fmt.Errorf("Cannot find serial %d in database", serial)
+        } else {
+			fmt.Println(err)
+		}
+    }
+
+	if revokedStatus == true {
+		indexEntry.Status = StatusRevoked
+	} else if time.Now().After(indexEntry.RevocationTime) {
+		indexEntry.Status = StatusExpired
+	} else {
+		indexEntry.Status = StatusValid
+	}
+	return indexEntry, nil
 }
 
 // function to parse the index file
@@ -279,7 +363,14 @@ func (self *OCSPResponder) verify(rawreq []byte) ([]byte, error) {
 	}
 
 	// get the index entry, if it exists
-	ent, err := self.getIndexEntry(req.SerialNumber)
+	var entStore IndexEntry
+	var ent *IndexEntry
+	if self.Database {
+		entStore, err = GetCertStatusFromDB(req.SerialNumber)
+		ent = &entStore
+	} else {
+		ent, err = self.getIndexEntry(req.SerialNumber)
+	}
 	if err != nil {
 		log.Println(err)
 		status = ocsp.Unknown
@@ -403,6 +494,10 @@ func (self *OCSPResponder) Serve() error {
 
 	self.CaCert = cacert
 	self.RespCert = respcert
+
+	if self.Database {
+		self.DbConnect()
+	}
 
 	// Add handler for "/health"
 	http.HandleFunc("/health", healthHandler)
